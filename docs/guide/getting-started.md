@@ -136,6 +136,35 @@ If you have USB debugging (`adb`) enabled on your phone, NectarLink detects the 
 3. Confirm that the 6-digit code matches on both screens and accept on both devices.
 4. Once paired, NectarLink uses the high-speed USB connection (`On USB`) whenever the cable is plugged in and switches to Wi-Fi automatically when you unplug it.
 
+### Method 4: Pairing PC to PC (Remote Desktop & Sharing)
+
+You can pair two Windows PCs, two Linux PCs, or Windows and Linux together:
+1. On **PC 1**, click **Pair a new device** in the left rail or in **Settings › Devices**. The pairing screen starts hosting.
+2. On **PC 2**, click **Pair a new device**, then choose **Pair nearby**. PC 1 appears in the list of discovered nearby machines.
+3. Select PC 1 and verify the 6-digit verification code displayed on both screens.
+4. Once paired, enable **Reverse PC screen mirroring** (`pc_mirror`) and **Remote input** in **Settings › Devices** to view and control PC 1 from PC 2 (or vice versa), share files via drag and drop, and sync clipboards instantly.
+
+### Method 5: Pairing Mobile to Mobile (Phone & Tablet)
+
+You can pair an Android phone with an Android tablet or another phone:
+1. On **Device 1**, open NectarLink and tap **Pair**. Tap **Show a code** at the bottom of the screen.
+2. On **Device 2**, open NectarLink and tap **Scan code**, then scan the QR code displayed on Device 1. (Alternatively, tap **Pair nearby** and match the 6-digit code).
+3. Both devices will establish an encrypted session. You can now mirror the phone screen to your tablet, sync clipboards, forward notifications, and transfer files directly at Wi-Fi speeds.
+
+### Method 6: Connecting over Tailscale & VPNs (Direct & Full Speed)
+
+MobLink supports direct, zero-relay, high-speed connections across different networks using Tailscale or any standard VPN:
+1. **Zero-Configuration Tailscale:** Ensure both devices are connected to your Tailnet. MobLink natively recognizes Tailscale IPv4 (`100.64.0.0/10`) and IPv6 (`fd7a:115c:a1e0::/48`) address ranges as direct LAN paths, bypassing third-party public relays.
+2. **Windows Firewall configuration:** If connecting across Tailscale on Windows, ensure the Tailscale interface is set to Private once:
+   ```powershell
+   Set-NetConnectionProfile -InterfaceAlias Tailscale -NetworkCategory Private
+   ```
+3. **Manual Direct Connection:** If discovery is blocked across subnets or VPN tunnels, add the peer's Tailscale or VPN IP directly using the CLI:
+   ```bash
+   nectarlink connect <device-id> <tailscale-ip>:<port>
+   ```
+   Both devices will immediately negotiate a direct, full-speed QUIC connection.
+
 ## Choosing an Android Power Level
 
 Android groups app capabilities into tiers of system access. NectarLink is designed so that everyday features work out of the box at the `Standard` level, while power users can opt into `Assist` or `Elevated` without rooting their phone.

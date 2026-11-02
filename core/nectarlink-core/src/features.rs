@@ -389,10 +389,10 @@ pub struct MatrixInputs<'a> {
     pub toggles: &'a HashMap<String, bool>,
 }
 
-/// Computes the state of every feature in [`FEATURES`] and
-/// [`ANDROID_PAIR_FEATURES`] for one pair: the first for a phone (or
-/// tablet) and a PC, the second for two Android devices; the other list is
-/// Unsupported for the pair.
+/// Computes the state of every feature in [`FEATURES`],
+/// [`ANDROID_PAIR_FEATURES`], and [`DESKTOP_PAIR_FEATURES`] for one pair:
+/// the first for a phone and a PC, the second for two mobile/Android devices,
+/// and the third for two PCs; other lists evaluate to Unsupported for the pair.
 pub fn compute(device: DeviceId, inputs: MatrixInputs<'_>) -> CapabilityMatrix {
     let (local, peer) = (inputs.local, inputs.peer);
     let pc_pair = match (local.role(), peer.role()) {
@@ -400,7 +400,9 @@ pub fn compute(device: DeviceId, inputs: MatrixInputs<'_>) -> CapabilityMatrix {
         (Some(Role::Desktop), Some(Role::Phone)) => Some((peer, local)),
         _ => None,
     };
-    let android_pair = local.os == "android" && peer.os == "android";
+    let android_pair = (local.os == "android" || local.kind == DeviceKind::Phone || local.kind == DeviceKind::Tablet)
+        && (peer.os == "android" || peer.kind == DeviceKind::Phone || peer.kind == DeviceKind::Tablet);
+    let desktop_pair = local.role() == Some(Role::Desktop) && peer.role() == Some(Role::Desktop);
     let run = |list: &'static [FeatureDef], applies: Option<(&DeviceFacts, &DeviceFacts)>| {
         list.iter()
             .map(|def| {
@@ -426,6 +428,7 @@ pub fn compute(device: DeviceId, inputs: MatrixInputs<'_>) -> CapabilityMatrix {
     // other device (and its Android version).
     let mut features = run(FEATURES, pc_pair);
     features.extend(run(ANDROID_PAIR_FEATURES, android_pair.then_some((peer, local))));
+    features.extend(run(DESKTOP_PAIR_FEATURES, desktop_pair.then_some((peer, local))));
     let features = features.into_iter().collect();
     CapabilityMatrix { device, features }
 }
@@ -645,6 +648,78 @@ pub const ANDROID_PAIR_FEATURES: &[FeatureDef] = &[
         id: "pair.links",
         group: FeatureGroup::Device,
         requires: &[peer("link.open")],
+        partial: None,
+    },
+    FeatureDef {
+        id: "pair.mirror",
+        group: FeatureGroup::Mirroring,
+        requires: &[peer("mirror.screen"), here("mirror.view"), DeviceToggle("mirroring")],
+        partial: None,
+    },
+    FeatureDef {
+        id: "pair.controls",
+        group: FeatureGroup::Input,
+        requires: &[peer("mirror.input"), DeviceToggle("remote_input")],
+        partial: None,
+    },
+    FeatureDef {
+        id: "pair.calls",
+        group: FeatureGroup::Calls,
+        requires: &[peer("call.state"), here("call.dial"), DeviceToggle("calls")],
+        partial: None,
+    },
+];
+
+/// What two PCs (Windows, Linux, or macOS) do for each other:
+/// screen mirroring / remote desktop, remote input control, clipboard sync,
+/// bidirectional file transfers, notifications, power/media actions, and links.
+pub const DESKTOP_PAIR_FEATURES: &[FeatureDef] = &[
+    FeatureDef {
+        id: "pair.clipboard",
+        group: FeatureGroup::Clipboard,
+        requires: &[peer("clip.write"), DeviceToggle("clipboard")],
+        partial: None,
+    },
+    FeatureDef {
+        id: "pair.files",
+        group: FeatureGroup::Files,
+        requires: &[peer("files.transfer"), DeviceToggle("files")],
+        partial: None,
+    },
+    FeatureDef {
+        id: "pair.notifications",
+        group: FeatureGroup::Notifications,
+        requires: &[peer("notify.show"), DeviceToggle("notifications")],
+        partial: None,
+    },
+    FeatureDef {
+        id: "pair.pc_mirror",
+        group: FeatureGroup::Mirroring,
+        requires: &[peer("mirror.capture"), here("mirror.view"), DeviceToggle("pc_mirror")],
+        partial: None,
+    },
+    FeatureDef {
+        id: "pair.controls",
+        group: FeatureGroup::Input,
+        requires: &[peer("mirror.input"), here("input.inject"), DeviceToggle("remote_input")],
+        partial: None,
+    },
+    FeatureDef {
+        id: "pair.pc_actions",
+        group: FeatureGroup::Device,
+        requires: &[peer("pc.power"), DeviceToggle("pc_actions")],
+        partial: None,
+    },
+    FeatureDef {
+        id: "pair.links",
+        group: FeatureGroup::Device,
+        requires: &[peer("link.open")],
+        partial: None,
+    },
+    FeatureDef {
+        id: "pair.battery",
+        group: FeatureGroup::Device,
+        requires: &[peer("device.battery")],
         partial: None,
     },
 ];
@@ -1540,5 +1615,48 @@ mod tests {
             m.state("camera.webcam"),
             Some(locked(UpgradeAction::EnableAddon("vcam"), Effort::Minutes(1)))
         );
+    }
+
+    #[test]
+    fn two_pcs_support_desktop_pair_features() {
+        let pc1 = pc();
+        let pc2 = pc();
+        let paths = [ConnectionPath::Lan];
+        let toggles = HashMap::from([
+            ("clipboard".to_owned(), true),
+            ("files".to_owned(), true),
+            ("pc_mirror".to_owned(), true),
+            ("remote_input".to_owned(), true),
+            ("notifications".to_owned(), true),
+        ]);
+        let matrix = compute(DeviceId([8; 32]), MatrixInputs {
+            local: &pc1,
+            peer: &pc2,
+            paths: &paths,
+            toggles: &toggles,
+        });
+        assert_eq!(matrix.state("pair.clipboard"), Some(FeatureState::Available));
+        assert_eq!(matrix.state("pair.files"), Some(FeatureState::Available));
+    }
+
+    #[test]
+    fn two_mobile_devices_support_mobile_pair_features() {
+        let phone1 = facts(DeviceKind::Phone, "android", "16", PowerLevel::Elevated, BASIC_PHONE);
+        let phone2 = facts(DeviceKind::Phone, "android", "16", PowerLevel::Elevated, BASIC_PHONE);
+        let paths = [ConnectionPath::Lan];
+        let toggles = HashMap::from([
+            ("clipboard".to_owned(), true),
+            ("files".to_owned(), true),
+            ("notifications".to_owned(), true),
+        ]);
+        let matrix = compute(DeviceId([9; 32]), MatrixInputs {
+            local: &phone1,
+            peer: &phone2,
+            paths: &paths,
+            toggles: &toggles,
+        });
+        assert_eq!(matrix.state("pair.clipboard"), Some(FeatureState::Available));
+        assert_eq!(matrix.state("pair.files"), Some(FeatureState::Available));
+        assert_eq!(matrix.state("pair.battery"), Some(FeatureState::Available));
     }
 }

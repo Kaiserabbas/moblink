@@ -114,6 +114,9 @@ pub fn compute_capabilities(
     ];
     #[cfg(any(windows, target_os = "linux"))]
     {
+        caps.push("clip.write".into());
+        caps.push("files.transfer".into());
+        caps.push("link.open".into());
         caps.push(nectarlink_core::PC_WAKE.into());
         caps.push("media.control".into());
         caps.push(nectarlink_core::STORAGE_MOUNT.into());
